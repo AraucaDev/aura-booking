@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --aura-cream: #fcf7f0;
+  --aura-sand: #edd6aa;
+  --aura-terracota: #c39776;
+  --aura-brown: #7a4a1e;
+}
+
+html,
+body {
+  background: var(--aura-cream);
+  color: #3a2a17;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-full bg-aura-brown px-6 py-3 text-sm font-medium text-aura-sand transition hover:opacity-90 disabled:opacity-50;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center rounded-full border border-aura-terracota px-6 py-3 text-sm font-medium text-aura-brown transition hover:bg-aura-sand/30;
+  }
+  .card {
+    @apply rounded-2xl bg-white p-6 shadow-card;
+  }
+  .field {
+    @apply w-full rounded-xl border border-aura-terracota/40 bg-white px-4 py-3 text-sm outline-none focus:border-aura-brown focus:ring-2 focus:ring-aura-sand;
+  }
+  .option-card {
+    @apply cursor-pointer rounded-2xl border-2 border-transparent bg-white p-5 text-left shadow-card transition hover:border-aura-sand;
+  }
+  .option-card-active {
+    @apply border-aura-brown ring-2 ring-aura-sand;
+  }
+}
