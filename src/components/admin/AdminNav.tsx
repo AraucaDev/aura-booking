@@ -6,13 +6,13 @@ import { createClient } from "@/lib/supabase/client";
 import { classNames } from "@/lib/utils";
 
 const LINKS = [
-  { href: "/admin", label: "Overview" },
-  { href: "/admin/bookings", label: "Reservas" },
-  { href: "/admin/quotes", label: "Cotizaciones" },
-  { href: "/admin/clients", label: "Clientes" },
-  { href: "/admin/cleaners", label: "Cleaners" },
-  { href: "/admin/calendar", label: "Calendario" },
-  { href: "/admin/payments", label: "Pagos" },
+  { href: "/dashboard", label: "Overview" },
+  { href: "/dashboard/bookings", label: "Reservas" },
+  { href: "/dashboard/quotes", label: "Cotizaciones" },
+  { href: "/dashboard/clients", label: "Clientes" },
+  { href: "/dashboard/cleaners", label: "Cleaners" },
+  { href: "/dashboard/calendar", label: "Calendario" },
+  { href: "/dashboard/payments", label: "Pagos" },
 ];
 
 export function AdminNav({ email }: { email: string }) {
@@ -22,7 +22,7 @@ export function AdminNav({ email }: { email: string }) {
 
   async function signOut() {
     await supabase.auth.signOut();
-    router.push("/admin/login");
+    router.push("/dashboard/login");
     router.refresh();
   }
 
@@ -31,7 +31,7 @@ export function AdminNav({ email }: { email: string }) {
       <p className="font-display text-xl font-semibold text-aura-brown">Aura Admin</p>
       <nav className="mt-6 flex flex-1 flex-col gap-1">
         {LINKS.map((l) => {
-          const active = l.href === "/admin" ? pathname === "/admin" : pathname.startsWith(l.href);
+          const active = l.href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(l.href);
           return (
             <Link
               key={l.href}

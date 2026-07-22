@@ -16,8 +16,8 @@ export default function HomePage() {
         <Link href="/quote" className="btn-primary">
           Comenzar cotización
         </Link>
-        <Link href="/admin" className="btn-outline">
-          Admin
+        <Link href="/dashboard" className="btn-outline">
+          Dashboard
         </Link>
       </div>
     </main>

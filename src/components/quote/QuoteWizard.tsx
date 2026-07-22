@@ -24,9 +24,15 @@ type RoomKey = (typeof ROOM_KEYS)[number];
 
 const TOTAL_STEPS = 11;
 
-export function QuoteWizard() {
+export function QuoteWizard({
+  embed = false,
+  initialLang = "en",
+}: {
+  embed?: boolean;
+  initialLang?: Lang;
+}) {
   const supabase = useMemo(() => createClient(), []);
-  const [lang, setLang] = useState<Lang>("en");
+  const [lang, setLang] = useState<Lang>(initialLang);
   const [step, setStep] = useState(1);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [loadingServices, setLoadingServices] = useState(true);
@@ -61,6 +67,24 @@ export function QuoteWizard() {
       setLoadingServices(false);
     })();
   }, [supabase]);
+
+  // Modo embebido: reportar la altura al sitio padre para auto-ajustar el iframe.
+  useEffect(() => {
+    if (!embed || typeof window === "undefined" || window.parent === window) return;
+    const post = () =>
+      window.parent.postMessage(
+        { type: "aura:resize", height: document.documentElement.scrollHeight },
+        "*"
+      );
+    post();
+    const ro = new ResizeObserver(post);
+    ro.observe(document.body);
+    window.addEventListener("load", post);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("load", post);
+    };
+  }, [embed]);
 
   const roomsFactor = ROOMS_FACTOR[roomKey];
   const coreServices = useMemo(
@@ -193,7 +217,13 @@ export function QuoteWizard() {
       });
       const cdata = await checkout.json();
       if (!checkout.ok || !cdata.url) throw new Error(cdata.error || "Checkout error");
-      window.location.href = cdata.url;
+      // Embebido: Stripe Checkout no puede vivir dentro de un iframe, así que
+      // pedimos al sitio padre que redirija a nivel superior. Si no, redirigimos aquí.
+      if (embed && window.parent !== window) {
+        window.parent.postMessage({ type: "aura:redirect", url: cdata.url }, "*");
+      } else {
+        window.location.href = cdata.url;
+      }
     } catch (e: any) {
       setError(e.message || "Error");
       setSubmitting(false);
