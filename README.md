@@ -105,3 +105,4 @@ src/
 supabase/              # schema.sql, seed.sql
 docs/                  # guías de configuración
 ```
+# aura-booking
