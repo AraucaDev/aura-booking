@@ -49,16 +49,20 @@ export function buildLine(
   service: ServiceItem,
   qty: number,
   roomsFactor: number,
-  applyRoomsFactor: boolean
+  applyRoomsFactor: boolean,
+  /** Tarifa por hora del cleaner elegido. Si no se pasa, usa la del catálogo. */
+  hourlyRate?: number
 ): SelectedLine {
   let lineTotal = 0;
   if (service.is_request_quote) {
     lineTotal = 0;
   } else if (service.flat_price != null) {
+    // Los precios fijos no dependen de la tarifa del cleaner.
     lineTotal = service.flat_price * qty;
   } else {
     const factor = applyRoomsFactor ? roomsFactor : 1;
-    lineTotal = service.estimated_hours * qty * service.price_per_hour * factor;
+    const rate = hourlyRate ?? service.price_per_hour ?? BASE_RATE;
+    lineTotal = service.estimated_hours * qty * rate * factor;
   }
   return {
     code: service.code,

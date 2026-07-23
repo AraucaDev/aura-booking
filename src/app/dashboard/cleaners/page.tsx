@@ -1,66 +1,95 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Cleaner } from "@/lib/types";
+import type { Cleaner, CleanerAvailability } from "@/lib/types";
+import { CleanerCard } from "@/components/admin/CleanerCard";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminCleaners() {
+export default function DashboardCleaners() {
   const supabase = createClient();
   const [cleaners, setCleaners] = useState<Cleaner[]>([]);
+  const [availability, setAvailability] = useState<Record<number, CleanerAvailability[]>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  async function load() {
-    const { data } = await supabase.from("cleaners").select("*").order("id");
-    setCleaners((data as Cleaner[]) ?? []);
+  const load = useCallback(async () => {
+    const [{ data: cs, error: cErr }, { data: av }] = await Promise.all([
+      supabase.from("cleaners").select("*").order("id"),
+      supabase.from("cleaner_availability").select("*").order("weekday"),
+    ]);
+    if (cErr) setError(cErr.message);
+    setCleaners((cs as Cleaner[]) ?? []);
+
+    const grouped: Record<number, CleanerAvailability[]> = {};
+    for (const a of (av as CleanerAvailability[]) ?? []) {
+      (grouped[a.cleaner_id] ??= []).push(a);
+    }
+    setAvailability(grouped);
     setLoading(false);
-  }
+  }, [supabase]);
+
   useEffect(() => {
     load();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [load]);
 
-  async function update(id: number, patch: Partial<Cleaner>) {
-    setCleaners((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
-    await supabase.from("cleaners").update(patch).eq("id", id);
-  }
-  async function add() {
-    const { data } = await supabase
+  async function addCleaner() {
+    setError(null);
+    const { data, error } = await supabase
       .from("cleaners")
-      .insert({ name: "Nuevo cleaner", status: "active" })
+      .insert({ name: "Nuevo profesional", status: "active", hourly_rate: 35 })
       .select("*")
       .single();
-    if (data) setCleaners((prev) => [...prev, data as Cleaner]);
+    if (error) return setError(error.message);
+
+    // Horario por defecto: Lun–Sáb 9:00–18:00, domingo cerrado.
+    const rows = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+      cleaner_id: (data as Cleaner).id,
+      weekday,
+      start_time: "09:00",
+      end_time: "18:00",
+      active: weekday !== 0,
+    }));
+    await supabase.from("cleaner_availability").insert(rows);
+    await load();
   }
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-display text-3xl font-semibold text-aura-brown">Cleaners</h1>
-        <button className="btn-primary" onClick={add}>+ Agregar</button>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-semibold text-aura-brown">Cleaners</h1>
+          <p className="text-sm text-aura-brown/60">
+            Foto, tarifa por hora y disponibilidad semanal de cada profesional.
+          </p>
+        </div>
+        <button className="btn-primary shrink-0" onClick={addCleaner}>
+          + Agregar cleaner
+        </button>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-aura-brown/60">Cargando…</p>
+      ) : cleaners.length === 0 ? (
+        <div className="card text-center text-aura-brown/60">
+          Aún no hay cleaners. Agrega el primero con el botón de arriba.
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 lg:grid-cols-2">
           {cleaners.map((c) => (
-            <div key={c.id} className="card">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-aura-brown/40">ID {c.id}</span>
-                <select
-                  className="rounded-full border border-aura-terracota/40 px-2 py-1 text-xs"
-                  value={c.status}
-                  onChange={(e) => update(c.id, { status: e.target.value as Cleaner["status"] })}
-                >
-                  <option value="active">activo</option>
-                  <option value="inactive">inactivo</option>
-                </select>
-              </div>
-              <input className="field mt-3" value={c.name} onChange={(e) => update(c.id, { name: e.target.value })} />
-              <input className="field mt-2" placeholder="Email" value={c.email ?? ""} onChange={(e) => update(c.id, { email: e.target.value })} />
-              <input className="field mt-2" placeholder="Teléfono" value={c.phone ?? ""} onChange={(e) => update(c.id, { phone: e.target.value })} />
-            </div>
+            <CleanerCard
+              key={c.id}
+              cleaner={c}
+              availability={availability[c.id] ?? []}
+              onChanged={load}
+            />
           ))}
         </div>
       )}

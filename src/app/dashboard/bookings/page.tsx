@@ -9,7 +9,7 @@ export default async function AdminBookings() {
   const supabase = createServerSupabase();
   const { data: bookings } = await supabase
     .from("bookings")
-    .select("*, clients(name, email), quotes(service_type, total)")
+    .select("*, clients(name, email), quotes(service_type, total), cleaners(name)")
     .order("service_date", { ascending: false })
     .limit(200);
 
@@ -23,6 +23,7 @@ export default async function AdminBookings() {
               <th className="p-3">Fecha</th>
               <th className="p-3">Hora</th>
               <th className="p-3">Cliente</th>
+              <th className="p-3">Profesional</th>
               <th className="p-3">Servicio</th>
               <th className="p-3">Total</th>
               <th className="p-3">40%</th>
@@ -37,6 +38,7 @@ export default async function AdminBookings() {
                 <td className="p-3">{b.service_date}</td>
                 <td className="p-3">{String(b.service_time).slice(0, 5)}</td>
                 <td className="p-3">{b.clients?.name ?? "—"}</td>
+                <td className="p-3">{b.cleaners?.name ?? "— sin asignar"}</td>
                 <td className="p-3">{b.quotes?.service_type ?? "—"}</td>
                 <td className="p-3">{formatCAD(Number(b.quotes?.total ?? 0))}</td>
                 <td className="p-3"><PayFlag status={b.payment_40_status} /></td>
@@ -48,7 +50,7 @@ export default async function AdminBookings() {
               </tr>
             ))}
             {(!bookings || bookings.length === 0) && (
-              <tr><td colSpan={9} className="p-4 text-center text-aura-brown/50">Sin reservas.</td></tr>
+              <tr><td colSpan={10} className="p-4 text-center text-aura-brown/50">Sin reservas.</td></tr>
             )}
           </tbody>
         </table>

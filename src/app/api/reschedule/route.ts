@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { updateCalendarEvent } from "@/lib/google-calendar";
-import { getAvailableSlots, localDateTime, addHoursToTime } from "@/lib/availability";
+import { assertSlotAvailable, localDateTime, addHoursToTime } from "@/lib/availability";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +24,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Esta reserva no puede reagendarse" }, { status: 409 });
   }
 
-  // Validar disponibilidad del nuevo slot.
-  const dur = Math.max(1, Math.ceil(booking.duration_hours || 1));
-  const slots = await getAvailableSlots(date, dur);
-  const ok = slots.find((s) => s.time === time && s.available);
-  if (!ok) return NextResponse.json({ error: "Ese horario ya no está disponible" }, { status: 409 });
+  if (!booking.cleaner_id) {
+    return NextResponse.json(
+      { error: "La reserva no tiene profesional asignado" },
+      { status: 409 }
+    );
+  }
+
+  // Validar el nuevo horario contra la agenda del cleaner (excluyendo esta
+  // misma reserva, para que no choque consigo misma).
+  const check = await assertSlotAvailable(
+    date,
+    time,
+    Number(booking.duration_hours || 1),
+    booking.cleaner_id,
+    bookingId
+  );
+  if (!check.ok) return NextResponse.json({ error: check.error }, { status: 409 });
 
   await supabase.from("bookings").update({ service_date: date, service_time: time }).eq("id", bookingId);
 

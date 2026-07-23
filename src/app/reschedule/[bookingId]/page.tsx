@@ -9,7 +9,7 @@ export default async function ReschedulePage({ params }: { params: { bookingId: 
   const supabase = createAdminClient();
   const { data: booking } = await supabase
     .from("bookings")
-    .select("id, service_date, service_time, duration_hours, status, clients(language)")
+    .select("id, service_date, service_time, duration_hours, status, cleaner_id, clients(language)")
     .eq("id", params.bookingId)
     .maybeSingle();
   if (!booking) notFound();
@@ -25,7 +25,8 @@ export default async function ReschedulePage({ params }: { params: { bookingId: 
         currentDate={booking.service_date}
         currentTime={String(booking.service_time).slice(0, 5)}
         duration={Number(booking.duration_hours || 1)}
-        locked={["completed", "cancelled"].includes(booking.status)}
+        cleanerId={booking.cleaner_id}
+        locked={["completed", "cancelled"].includes(booking.status) || !booking.cleaner_id}
       />
     </main>
   );

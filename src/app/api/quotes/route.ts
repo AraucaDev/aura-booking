@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildLine, computeQuote } from "@/lib/pricing";
 import { adminNotificationEmail } from "@/lib/email-templates";
+import { assertSlotAvailable } from "@/lib/availability";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/resend";
 import type { ServiceItem, ServiceType } from "@/lib/types";
 
@@ -12,6 +13,7 @@ const lineSchema = z.object({ code: z.string(), qty: z.number().int().min(0) });
 
 const bodySchema = z.object({
   lang: z.enum(["en", "fr", "es"]),
+  cleanerId: z.number().int().positive(),
   residenceType: z.enum(["residential", "comercial", "airbnb"]),
   serviceType: z.enum(["standard", "deep", "move_in_out", "general", "addons"]),
   roomKey: z.string(),
@@ -40,6 +42,17 @@ export async function POST(req: Request) {
   const b = parsed.data;
   const supabase = createAdminClient();
 
+  // 0) Validar el cleaner y tomar su tarifa (autoridad de precios).
+  const { data: cleaner } = await supabase
+    .from("cleaners")
+    .select("id, name, hourly_rate, status")
+    .eq("id", b.cleanerId)
+    .maybeSingle();
+  if (!cleaner || cleaner.status !== "active") {
+    return NextResponse.json({ error: "El profesional seleccionado no está disponible" }, { status: 400 });
+  }
+  const hourlyRate = Number(cleaner.hourly_rate ?? 35);
+
   // 1) Recalcular precios con el catálogo real (autoridad de precios).
   const codes = [...b.services, ...b.addons].map((l) => l.code);
   const { data: catalog } = await supabase.from("services").select("*").in("code", codes);
@@ -48,10 +61,10 @@ export async function POST(req: Request) {
   const applyRooms = APPLY_ROOMS.includes(b.serviceType);
   const serviceLines = b.services
     .filter((l) => l.qty > 0 && byCode.has(l.code))
-    .map((l) => buildLine(byCode.get(l.code)!, l.qty, b.roomsFactor, applyRooms));
+    .map((l) => buildLine(byCode.get(l.code)!, l.qty, b.roomsFactor, applyRooms, hourlyRate));
   const addonLines = b.addons
     .filter((l) => l.qty > 0 && byCode.has(l.code))
-    .map((l) => buildLine(byCode.get(l.code)!, l.qty, b.roomsFactor, false));
+    .map((l) => buildLine(byCode.get(l.code)!, l.qty, b.roomsFactor, false, hourlyRate));
 
   const breakdown = computeQuote({
     residenceType: b.residenceType,
@@ -98,6 +111,7 @@ export async function POST(req: Request) {
     .from("quotes")
     .insert({
       client_id: clientId,
+      cleaner_id: b.cleanerId,
       residence_type: b.residenceType,
       service_type: b.serviceType,
       rooms_factor: b.roomsFactor,
@@ -130,12 +144,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ quoteId: quote.id, requestQuote: true });
   }
 
-  // 5) Crear la reserva (pendiente de pago).
+  // 5) Revalidar el horario contra la agenda real del cleaner.
+  // La UI pudo quedar desactualizada; esta es la barrera contra dobles reservas.
+  const slotCheck = await assertSlotAvailable(
+    b.date,
+    b.time,
+    breakdown.durationHours,
+    b.cleanerId
+  );
+  if (!slotCheck.ok) {
+    return NextResponse.json({ error: slotCheck.error, slotTaken: true }, { status: 409 });
+  }
+
+  // 6) Crear la reserva (pendiente de pago).
   const { data: booking, error: bErr } = await supabase
     .from("bookings")
     .insert({
       quote_id: quote.id,
       client_id: clientId,
+      cleaner_id: b.cleanerId,
       service_date: b.date,
       service_time: b.time,
       duration_hours: breakdown.durationHours,

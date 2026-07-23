@@ -85,6 +85,18 @@ export interface Cleaner {
   status: "active" | "inactive";
   hire_date: string | null;
   avatar_url: string | null;
+  hourly_rate: number;
+  notes: string | null;
+}
+
+/** Franja de disponibilidad semanal de un cleaner. weekday: 0=domingo … 6=sábado */
+export interface CleanerAvailability {
+  id: number;
+  cleaner_id: number;
+  weekday: number;
+  start_time: string; // "09:00:00"
+  end_time: string;   // "18:00:00"
+  active: boolean;
 }
 
 export interface Booking {

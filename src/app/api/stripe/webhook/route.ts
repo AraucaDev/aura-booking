@@ -41,12 +41,13 @@ export async function POST(req: Request) {
         // Cargar reserva + cotización + cliente.
         const { data: booking } = await supabase
           .from("bookings")
-          .select("*, quotes(*), clients(*)")
+          .select("*, quotes(*), clients(*), cleaners(name)")
           .eq("id", bookingId)
           .single();
         if (!booking) break;
         const quote = (booking as any).quotes;
         const client = (booking as any).clients;
+        const cleanerName = (booking as any).cleaners?.name ?? "Sin asignar";
 
         // Crear evento de Google Calendar.
         const startISO = localDateTime(booking.service_date, booking.service_time.slice(0, 5));
@@ -55,8 +56,12 @@ export async function POST(req: Request) {
           addHoursToTime(booking.service_time.slice(0, 5), booking.duration_hours || 1)
         );
         const eventId = await createCalendarEvent({
-          summary: `Aura — ${client?.name ?? "Cliente"} (${quote?.service_type ?? ""})`,
-          description: `Reserva ${bookingId}\nCliente: ${client?.name} · ${client?.phone ?? ""}\nTotal: ${quote?.total} CAD`,
+          summary: `Aura — ${client?.name ?? "Cliente"} · ${cleanerName} (${quote?.service_type ?? ""})`,
+          description:
+            `Reserva ${bookingId}\n` +
+            `Cliente: ${client?.name} · ${client?.phone ?? ""}\n` +
+            `Profesional: ${cleanerName}\n` +
+            `Total: ${quote?.total} CAD`,
           startISO,
           endISO,
           location: booking.address ?? undefined,

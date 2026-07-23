@@ -6,6 +6,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { serviceName, t } from "@/lib/i18n";
 import { buildLine, computeQuote, ROOMS_FACTOR } from "@/lib/pricing";
 import type {
+  Cleaner,
   Frequency,
   Lang,
   ResidenceType,
@@ -22,7 +23,7 @@ const APPLY_ROOMS: ServiceType[] = ["standard", "deep", "move_in_out"];
 
 type RoomKey = (typeof ROOM_KEYS)[number];
 
-const TOTAL_STEPS = 11;
+const TOTAL_STEPS = 12;
 
 export function QuoteWizard({
   embed = false,
@@ -45,6 +46,8 @@ export function QuoteWizard({
   const [serviceQtys, setServiceQtys] = useState<Record<string, number>>({});
   const [addonQtys, setAddonQtys] = useState<Record<string, number>>({});
   const [frequency, setFrequency] = useState<Frequency>("one_time");
+  const [cleaners, setCleaners] = useState<Cleaner[]>([]);
+  const [cleanerId, setCleanerId] = useState<number | null>(null);
 
   // cliente + agenda
   const [client, setClient] = useState({ name: "", email: "", phone: "", address: "" });
@@ -58,12 +61,12 @@ export function QuoteWizard({
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("services")
-        .select("*")
-        .eq("active", true)
-        .order("sort_order");
-      setServices((data as ServiceItem[]) ?? []);
+      const [{ data: svc }, { data: cls }] = await Promise.all([
+        supabase.from("services").select("*").eq("active", true).order("sort_order"),
+        supabase.from("cleaners").select("*").eq("status", "active").order("name"),
+      ]);
+      setServices((svc as ServiceItem[]) ?? []);
+      setCleaners((cls as Cleaner[]) ?? []);
       setLoadingServices(false);
     })();
   }, [supabase]);
@@ -97,20 +100,33 @@ export function QuoteWizard({
   );
   const showAddonsStep = serviceType !== "addons";
 
+  const selectedCleaner = useMemo(
+    () => cleaners.find((c) => c.id === cleanerId) ?? null,
+    [cleaners, cleanerId]
+  );
+  // Mientras no se elija profesional, se muestra la tarifa base del catálogo.
+  const hourlyRate = selectedCleaner ? Number(selectedCleaner.hourly_rate) : undefined;
+
   const serviceLines = useMemo(() => {
     if (!serviceType) return [];
     const applyRooms = APPLY_ROOMS.includes(serviceType);
     return coreServices
       .filter((s) => (serviceQtys[s.code] || 0) > 0)
-      .map((s) => ({ ...buildLine(s, serviceQtys[s.code], roomsFactor, applyRooms), item: s }));
-  }, [coreServices, serviceQtys, roomsFactor, serviceType]);
+      .map((s) => ({
+        ...buildLine(s, serviceQtys[s.code], roomsFactor, applyRooms, hourlyRate),
+        item: s,
+      }));
+  }, [coreServices, serviceQtys, roomsFactor, serviceType, hourlyRate]);
 
   const addonLines = useMemo(() => {
     if (!showAddonsStep) return [];
     return addonServices
       .filter((s) => (addonQtys[s.code] || 0) > 0)
-      .map((s) => ({ ...buildLine(s, addonQtys[s.code], roomsFactor, false), item: s }));
-  }, [addonServices, addonQtys, roomsFactor, showAddonsStep]);
+      .map((s) => ({
+        ...buildLine(s, addonQtys[s.code], roomsFactor, false, hourlyRate),
+        item: s,
+      }));
+  }, [addonServices, addonQtys, roomsFactor, showAddonsStep, hourlyRate]);
 
   const breakdown = useMemo(
     () =>
@@ -126,18 +142,19 @@ export function QuoteWizard({
     [residenceType, serviceType, roomsFactor, isFirstService, frequency, serviceLines, addonLines]
   );
 
-  // Cargar slots al entrar al paso 10 o cambiar fecha
+  // Cargar slots al entrar al paso de fecha, o al cambiar fecha/cleaner.
+  // La disponibilidad es propia de cada cleaner (agenda + 1h de traslado).
   useEffect(() => {
-    if (step !== 10 || !date) return;
+    if (step !== 11 || !date || !cleanerId) return;
     setLoadingSlots(true);
     setTime("");
     const dur = Math.max(1, Math.ceil(breakdown.durationHours || 1));
-    fetch(`/api/availability?date=${date}&duration=${dur}`)
+    fetch(`/api/availability?date=${date}&duration=${dur}&cleanerId=${cleanerId}`)
       .then((r) => r.json())
       .then((d) => setSlots(d.slots ?? []))
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false));
-  }, [step, date, breakdown.durationHours]);
+  }, [step, date, cleanerId, breakdown.durationHours]);
 
   function setQty(map: "svc" | "add", code: string, delta: number) {
     const setter = map === "svc" ? setServiceQtys : setAddonQtys;
@@ -157,9 +174,11 @@ export function QuoteWizard({
         return !!serviceType;
       case 5:
         return serviceLines.length > 0;
-      case 9:
-        return !!client.name && /.+@.+\..+/.test(client.email) && !!client.address;
+      case 8:
+        return !!cleanerId;
       case 10:
+        return !!client.name && /.+@.+\..+/.test(client.email) && !!client.address;
+      case 11:
         return !!date && !!time;
       default:
         return true;
@@ -185,6 +204,7 @@ export function QuoteWizard({
     try {
       const payload = {
         lang,
+        cleanerId,
         residenceType,
         serviceType,
         roomKey,
@@ -203,7 +223,17 @@ export function QuoteWizard({
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error");
+      if (!res.ok) {
+        // Alguien tomó el horario mientras el cliente completaba el formulario.
+        if (res.status === 409 || data.slotTaken) {
+          setError(data.error || t(lang, "slot_taken"));
+          setTime("");
+          setStep(11); // volver a elegir horario
+          setSubmitting(false);
+          return;
+        }
+        throw new Error(data.error || "Error");
+      }
 
       if (data.requestQuote) {
         setDone("request_quote");
@@ -345,15 +375,56 @@ export function QuoteWizard({
               </Section>
             )}
 
-            {/* STEP 8 — Estimado */}
+            {/* STEP 8 — Elegir profesional */}
             {step === 8 && (
+              <Section title={t(lang, "s_cleaner_title")} sub={t(lang, "s_cleaner_sub")}>
+                {cleaners.length === 0 ? (
+                  <p className="text-aura-brown/60">{t(lang, "no_cleaners")}</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {cleaners.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setCleanerId(c.id)}
+                        className={classNames(
+                          "option-card flex items-center gap-3",
+                          cleanerId === c.id && "option-card-active"
+                        )}
+                      >
+                        <span className="h-14 w-14 shrink-0 overflow-hidden rounded-full border-2 border-aura-sand bg-aura-cream">
+                          {c.avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={c.avatar_url} alt={c.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="flex h-full w-full items-center justify-center font-display text-xl text-aura-terracota">
+                              {c.name.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-aura-brown">{c.name}</span>
+                          <span className="block text-sm text-aura-terracota">
+                            {formatCAD(Number(c.hourly_rate), lang)}
+                            {t(lang, "per_hour")}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Section>
+            )}
+
+            {/* STEP 9 — Estimado */}
+            {step === 9 && (
               <Section title={t(lang, "s8_title")}>
                 <Breakdown lang={lang} breakdown={breakdown} lines={[...serviceLines, ...addonLines]} />
               </Section>
             )}
 
-            {/* STEP 9 — Datos cliente */}
-            {step === 9 && (
+            {/* STEP 10 — Datos cliente */}
+            {step === 10 && (
               <Section title={t(lang, "s9_title")}>
                 <div className="grid gap-3">
                   <input className="field" placeholder={t(lang, "full_name")} value={client.name}
@@ -368,8 +439,8 @@ export function QuoteWizard({
               </Section>
             )}
 
-            {/* STEP 10 — Fecha y hora */}
-            {step === 10 && (
+            {/* STEP 11 — Fecha y hora */}
+            {step === 11 && (
               <Section title={t(lang, "s10_title")}>
                 <input
                   type="date"
@@ -405,10 +476,11 @@ export function QuoteWizard({
               </Section>
             )}
 
-            {/* STEP 11 — Resumen */}
-            {step === 11 && (
+            {/* STEP 12 — Resumen */}
+            {step === 12 && (
               <Section title={t(lang, "s11_title")}>
                 <ReviewRow label={t(lang, "service")} value={t(lang, serviceType ?? "standard")} />
+                <ReviewRow label={t(lang, "cleaner")} value={selectedCleaner?.name ?? "—"} />
                 <ReviewRow label={t(lang, "frequency")} value={t(lang, frequency)} />
                 <ReviewRow label={t(lang, "date")} value={date} />
                 <ReviewRow label={t(lang, "time")} value={time} />

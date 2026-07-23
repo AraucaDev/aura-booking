@@ -11,6 +11,7 @@ export function RescheduleForm({
   currentDate,
   currentTime,
   duration,
+  cleanerId,
   locked,
 }: {
   bookingId: string;
@@ -18,6 +19,7 @@ export function RescheduleForm({
   currentDate: string;
   currentTime: string;
   duration: number;
+  cleanerId: number | null;
   locked: boolean;
 }) {
   const [date, setDate] = useState(currentDate);
@@ -28,14 +30,18 @@ export function RescheduleForm({
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!date || locked) return;
+    if (!date || locked || !cleanerId) return;
     setLoading(true);
     setTime("");
-    fetch(`/api/availability?date=${date}&duration=${Math.ceil(duration)}`)
+    // Se excluye esta misma reserva para que no bloquee su propio horario.
+    fetch(
+      `/api/availability?date=${date}&duration=${Math.ceil(duration)}` +
+        `&cleanerId=${cleanerId}&excludeBookingId=${bookingId}`
+    )
       .then((r) => r.json())
       .then((d) => setSlots(d.slots ?? []))
       .finally(() => setLoading(false));
-  }, [date, duration, locked]);
+  }, [date, duration, locked, cleanerId, bookingId]);
 
   async function save() {
     setSaving(true);
