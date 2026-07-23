@@ -37,4 +37,4 @@ export async function sendEmail(input: EmailInput): Promise<boolean> {
 }
 
 export const ADMIN_EMAIL = () =>
-  process.env.ADMIN_NOTIFICATION_EMAIL || "gabriel@araucamedia.com";
+  process.env.ADMIN_NOTIFICATION_EMAIL || "info@auracleaners.ca";
