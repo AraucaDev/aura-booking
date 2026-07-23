@@ -40,9 +40,17 @@ export default async function ConfirmationPage({ params }: { params: { bookingId
         <Row label={t(lang, "total")} value={formatCAD(Number(quote?.total ?? 0), lang)} bold />
       </div>
 
-      <Link href={`/reschedule/${booking.id}`} className="btn-outline mt-6 inline-flex">
-        {t(lang, "reschedule")}
-      </Link>
+      <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+        <Link href={`/reschedule/${booking.id}`} className="btn-outline">
+          {t(lang, "reschedule")}
+        </Link>
+        <a
+          href={process.env.NEXT_PUBLIC_MAIN_SITE_URL || "https://auracleaners.ca"}
+          className="btn-primary"
+        >
+          {t(lang, "back_home")}
+        </a>
+      </div>
     </main>
   );
 }

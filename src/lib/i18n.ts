@@ -87,6 +87,7 @@ const en: Dict = {
   confirmed_title: "Booking confirmed!",
   confirmed_body: "We've emailed your confirmation. See you soon.",
   reschedule: "Reschedule",
+  back_home: "Back to Aura Cleaners",
   // misc
   required: "This field is required",
   processing: "Processing…",
@@ -158,6 +159,7 @@ const fr: Dict = {
   confirmed_title: "Réservation confirmée !",
   confirmed_body: "Nous vous avons envoyé la confirmation par courriel. À bientôt.",
   reschedule: "Reprogrammer",
+  back_home: "Retour à Aura Cleaners",
   required: "Ce champ est requis",
   processing: "Traitement…",
 };
@@ -228,6 +230,7 @@ const es: Dict = {
   confirmed_title: "¡Reserva confirmada!",
   confirmed_body: "Te enviamos la confirmación por correo. ¡Nos vemos pronto!",
   reschedule: "Reagendar",
+  back_home: "Volver a Aura Cleaners",
   required: "Este campo es obligatorio",
   processing: "Procesando…",
 };

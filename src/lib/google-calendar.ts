@@ -6,10 +6,21 @@ import { OPERATING_TZ } from "./utils";
  * Requiere que el calendario (GOOGLE_CALENDAR_ID) haya sido compartido con
  * GOOGLE_SERVICE_ACCOUNT_EMAIL con permiso "Hacer cambios en eventos".
  */
+/**
+ * Normaliza la private key: convierte los `\n` literales en saltos reales y
+ * quita comillas envolventes (error común al pegarla en Vercel/.env).
+ */
+function normalizePrivateKey(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\n/g, "\n");
+}
+
 function getCalendarClient() {
   const auth = new google.auth.JWT({
     email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    key: (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    key: normalizePrivateKey(process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || ""),
     scopes: ["https://www.googleapis.com/auth/calendar"],
   });
   return google.calendar({ version: "v3", auth });
@@ -42,8 +53,15 @@ export async function createCalendarEvent(input: CalendarEventInput): Promise<st
       },
     });
     return res.data.id ?? null;
-  } catch (err) {
-    console.error("[google-calendar] createCalendarEvent error:", err);
+  } catch (err: any) {
+    console.error(
+      "[google-calendar] createCalendarEvent FALLÓ:",
+      "code=", err?.code ?? err?.response?.status,
+      "message=", err?.message,
+      "calendarId=", process.env.GOOGLE_CALENDAR_ID,
+      "serviceAccount=", process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      "details=", JSON.stringify(err?.response?.data ?? {})
+    );
     return null;
   }
 }
